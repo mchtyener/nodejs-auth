@@ -126,8 +126,7 @@ exports.verifyEmail = (async (req, res) => {
     try {
         const {isActive} = req.body
 
-        const id = req.params.id
-        const userData = await user.find({_id: id});
+        const userData = await user.findOne({_id: req.params.id});
 
         if (!userData) {
             return res.status(StatusCodes.NOT_FOUND).json({error: 'Böyle bir kullanıcı bulunamadı'});
@@ -156,7 +155,7 @@ exports.verifyEmail = (async (req, res) => {
 })
 
 exports.createToken = ((id) => {
-    return jwt.sign({userId: id}, 'your-secret-key', {expiresIn: '1h'});
+    return jwt.sign({userId: id}, process.env.SENDGRID_API_KEY, {expiresIn: '1h'});
 })
 let saveForgotPassword = async (data) => {
     const forgotPassword = await forgot_password.create({
