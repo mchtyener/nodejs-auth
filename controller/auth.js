@@ -40,7 +40,7 @@ exports.register = (async (req, res) => {
         });
         return res.status(StatusCodes.OK).json(data);
     } catch (err) {
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+        return res.status(StatusCodes.NOT_FOUND).json({
             err: "Kullanıcı oluşturulurken beklenmedik bir hata oluştu"
         });
     }
@@ -82,7 +82,7 @@ exports.forgotPassword = (async (req, res) => {
         });
         res.status(StatusCodes.OK).json({success: true});
     } catch (e) {
-        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({message: e});
+        return res.status(StatusCodes.NOT_FOUND).json({message: e});
     }
 
 })
@@ -118,13 +118,14 @@ exports.changePassword = (async (req, res) => {
         });
 
     } catch (e) {
-        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json();
+        res.status(StatusCodes.NOT_FOUND).json();
     }
 })
 
 exports.verifyEmail = (async (req, res) => {
     try {
-        const {isActive} = require(req.body)
+        const {isActive} = req.body
+
         const id = req.params.id
         const userData = await user.find({_id: id});
 
@@ -132,7 +133,7 @@ exports.verifyEmail = (async (req, res) => {
             return res.status(StatusCodes.NOT_FOUND).json({error: 'Böyle bir kullanıcı bulunamadı'});
         }
 
-        if (isActive) {
+        if (isActive !== undefined && isActive) {
             await user.findByIdAndUpdate(userData._id, {
                 $set: {
                     isActive,
@@ -143,13 +144,13 @@ exports.verifyEmail = (async (req, res) => {
                 });
             })
         } else {
-            res.status(StatusCodes.OK).json({
-                success: true, code: StatusCodes.OK, message: "Mail doğrulama işlemi başarısız oldu."
+            res.status(StatusCodes.NOT_FOUND).json({
+                success: true, code: StatusCodes.NOT_FOUND, message: "Mail doğrulama işlemi başarısız oldu."
             });
         }
 
     } catch (e) {
-        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json();
+        res.status(StatusCodes.NOT_FOUND).json();
     }
 
 })
