@@ -13,18 +13,22 @@ exports.register = (async (req, res) => {
         const {error} = validateUser(req.body);
 
         if (error) {
-            return res.status(400).json({err: error.message});
+            return res.status(400).json({message: error.message, success: false});
         }
         const {email, password, firstName, lastName, role, isActive} = req.body;
 
         if (await user.findOne({email})) {
-            return res.status(StatusCodes.NOT_FOUND).json({error: 'Böyle bir mail adresi kullanılmaktadır.'});
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: 'Böyle bir mail adresi kullanılmaktadır.',
+                success: false,
+                status: StatusCodes.NOT_FOUND
+            });
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
         const newUser = new user({email, password: hashedPassword, firstName, lastName, role, isActive});
         const data = await newUser.save();
-        let url = process.env.BASE_URL + `/verify-email/${data._id}`
+        let url = process.env.FRONTEND_URL + `/auth/verify-email/${data._id}`
         emailService.sendMail({
             to: newUser.email, subject: "Hesabınız Oluşturuldu", html: ` <p>Merhaba,</p>
                     <p>Hesabınız başarıyla oluşturuldu.</p>
@@ -32,16 +36,23 @@ exports.register = (async (req, res) => {
                     <ul>
                     <li><strong>Kullanıcı Adı:</strong> ${newUser.firstName} ${newUser.lastName}</li>
                     <li><strong>E-posta Adresi:</strong> ${newUser.email}</li>
-                    <li><strong>Hesabınızı aktig etmek için linke</strong> <a href="${url}">tıklayın</a></li>
+                    <li><strong>Hesabınızı aktif etmek için linke</strong> <a href="${url}">tıklayın</a></li>
                     </ul>
                     <p>Hesabınıza erişmek için aşağıdaki bağlantıyı kullanabilirsiniz:</p>
                     <p>Eğer hesabınızı siz oluşturmadıysanız, lütfen bu e-postayı dikkate almayınız.</p>
             `,
         });
-        return res.status(StatusCodes.OK).json(data);
+        return res.status(StatusCodes.OK).json({
+            data,
+            success: true,
+            message: "Kullanıcı başarıyla oluşturuldu",
+            status: StatusCodes.OK
+        });
     } catch (err) {
-        return res.status(StatusCodes.NOT_FOUND).json({
-            err: "Kullanıcı oluşturulurken beklenmedik bir hata oluştu"
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: "Kullanıcı oluşturulurken beklenmedik bir hata oluştu",
+            success: false,
+            status: StatusCodes.NOT_FOUND
         });
     }
 })
@@ -51,28 +62,48 @@ exports.login = (async (req, res) => {
     const userData = await user.findOne({email});
 
     if (!userData) {
-        return res.status(StatusCodes.NOT_FOUND).json({error: 'Böyle bir kullanıcı bulunamadı'});
+        return res.status(StatusCodes.NOT_FOUND).json({
+            message: 'Böyle bir kullanıcı bulunamadı',
+            success: false,
+            status: StatusCodes.NOT_FOUND
+        });
     }
 
     if (!(await bcrypt.compare(password, userData.password))) {
-        return res.status(StatusCodes.UNAUTHORIZED).json({error: 'Authentication failed'});
+        return res.status(StatusCodes.UNAUTHORIZED).json({
+            message: 'Authentication failed',
+            success: false,
+            status: StatusCodes.UNAUTHORIZED
+        });
     }
 
     const token = await this.createToken(userData._id)
-    res.status(StatusCodes.OK).json({token, userData});
+    res.status(StatusCodes.OK).json({
+        token,
+        email: userData.email,
+        firstName: userData.firstName,
+        isActive: userData.isActive,
+        role: userData.role,
+        id: userData.id,
+        success: true,
+        status: StatusCodes.OK,
+        message: 'Oturum başarıyla açıldı.',
+    });
 })
 
 exports.forgotPassword = (async (req, res) => {
     try {
         const {email} = req.body;
         const userData = await user.findOne({email});
-
         if (!userData) {
-            return res.status(StatusCodes.NOT_FOUND).json({error: 'Böyle bir kullanıcı bulunamadı'});
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: 'Böyle bir kullanıcı bulunamadı',
+                success: false,
+                status: StatusCodes.NOT_FOUND
+            });
         }
         let response = await saveForgotPassword(userData)
-        let url = process.env.BASE_URL + `/change-password/${response.verification}`
-
+        let url = process.env.FRONTEND_URL + `/auth/change-password/${response.verification}`
         emailService.sendMail({
             to: response.email, subject: "Şifre Sıfırlama Talebi", html: `<p>Merhaba,</p>
                    <p>Şifrenizi sıfırlamak için lütfen aşağıdaki bağlantıya tıklayın:</p>
@@ -80,9 +111,17 @@ exports.forgotPassword = (async (req, res) => {
                    <p>${url}</p>
                    <p>Eğer bu e-postayı istemediyseniz güvenle yok sayabilirsiniz.</p>`,
         });
-        res.status(StatusCodes.OK).json({success: true});
+        res.status(StatusCodes.OK).json({
+            message: 'Şifre sıfırlama maili gönderildi',
+            success: true,
+            status: StatusCodes.OK
+        });
     } catch (e) {
-        return res.status(StatusCodes.NOT_FOUND).json({message: e});
+        return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            message: 'Şifre sıfırlama maili gönderilirken bir hata oluştu',
+            success: false,
+            status: StatusCodes.BAD_REQUEST
+        });
     }
 
 })
@@ -100,7 +139,11 @@ exports.changePassword = (async (req, res) => {
         let userData = await user.findOne({email: verification.email});
 
         if (!userData) {
-            return res.status(StatusCodes.NOT_FOUND).json({error: 'Böyle bir kullanıcı bulunamadı'});
+            return res.status(StatusCodes.NOT_FOUND).json({
+                message: 'Böyle bir kullanıcı bulunamadı',
+                success: false,
+                status: StatusCodes.NOT_FOUND
+            });
         }
 
 
@@ -114,48 +157,53 @@ exports.changePassword = (async (req, res) => {
 
 
         res.status(StatusCodes.OK).json({
-            success: true, code: StatusCodes.OK, message: "Şifreniz başarıyla güncellendi."
+            success: true, status: StatusCodes.OK, message: "Şifreniz başarıyla güncellendi."
         });
 
     } catch (e) {
-        res.status(StatusCodes.NOT_FOUND).json();
+        res.status(StatusCodes.BAD_REQUEST).json({
+            message: 'Şifre güncellenirken teknik bir hata oluştu.',
+            success: false,
+            status: StatusCodes.BAD_REQUEST
+        });
     }
 })
 
 exports.verifyEmail = (async (req, res) => {
     try {
         const {isActive} = req.body
-
-        const userData = await user.findOne({_id: req.params.id});
-
+        const id = req.params.id
+        const userData = await user.findOne({_id: id});
         if (!userData) {
             return res.status(StatusCodes.NOT_FOUND).json({error: 'Böyle bir kullanıcı bulunamadı'});
         }
 
-        if (isActive !== undefined && isActive) {
+        if (isActive) {
             await user.findByIdAndUpdate(userData._id, {
                 $set: {
                     isActive,
                 }
             }).then(async () => {
                 res.status(StatusCodes.OK).json({
-                    success: true, code: StatusCodes.OK, message: "Mail doğrulaması başarıyla yapıldı."
+                    success: true, status: StatusCodes.OK, message: "Mail doğrulaması başarıyla yapıldı."
                 });
             })
         } else {
-            res.status(StatusCodes.NOT_FOUND).json({
-                success: true, code: StatusCodes.NOT_FOUND, message: "Mail doğrulama işlemi başarısız oldu."
+            res.status(StatusCodes.BAD_REQUEST).json({
+                success: false, status: StatusCodes.BAD_REQUEST, message: "Mail doğrulama işlemi başarısız oldu."
             });
         }
 
     } catch (e) {
-        res.status(StatusCodes.NOT_FOUND).json();
+        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+            success: false, status: StatusCodes.BAD_REQUEST, message: "Mail doğrulama işlemi sırasında bir hata oluştu"
+        });
     }
 
 })
 
 exports.createToken = ((id) => {
-    return jwt.sign({userId: id}, process.env.SENDGRID_API_KEY, {expiresIn: '1h'});
+    return jwt.sign({userId: id}, process.env.JTW_SECRET, {expiresIn: '1h'});
 })
 let saveForgotPassword = async (data) => {
     const forgotPassword = await forgot_password.create({
